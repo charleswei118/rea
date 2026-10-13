@@ -7,10 +7,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: real-web-network-captures-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 env:
   HUSKY: "0"
   NODE_OPTIONS: --max-old-space-size=768
@@ -28,6 +24,7 @@ jobs:
       - name: Use pinned package manager
         run: npm install --global npm@11.16.0
       - run: npm ci
+      - uses: ./.github/actions/portable-build-cache
       - name: Acquire fixed upstream native profile in runner temporary storage
         shell: bash
         run: |
