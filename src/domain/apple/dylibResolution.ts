@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AnalysisCancelledError } from "../analysisErrorCore.js";
 
 import {
   compatibleSlice,
@@ -16,6 +17,7 @@ import {
 import {
   DYLIB_RESOLUTION_LIMITATIONS,
   deriveFindings,
+  type TracedRootSlice,
 } from "./dylibResolutionFindings.js";
 
 /**
@@ -515,7 +517,10 @@ const traceProcess = async (
     context.byInstallName.set(rootSlice.install_name, context.root);
   const pending = [context.root];
   while (pending.length > 0) {
-    signal?.throwIfAborted();
+    if (signal?.aborted)
+      throw new AnalysisCancelledError("trace_dylib_resolution", {
+        cause: signal.reason,
+      });
     const loader = pending.pop() ?? "";
     const current = context.loaded.get(loader);
     if (current === undefined) continue;
@@ -568,6 +573,7 @@ export const traceDylibLoading = async (
   for (const path of request.unclassified ?? [])
     images.set(path, await view.image(path));
   const roots: DylibTrace["roots"][number][] = [];
+  const rootSlices: TracedRootSlice[] = [];
   const edges: Edge[] = [];
   const withoutArchitecture: string[] = [];
   const environmentRoots = new Set<string>();
@@ -597,6 +603,7 @@ export const traceDylibLoading = async (
       )
         environmentRoots.add(root);
       roots.push({ image: root, architecture: slice.architecture });
+      rootSlices.push({ image: root, slice });
       edges.push(
         ...(await traceProcess(
           {
@@ -641,7 +648,7 @@ export const traceDylibLoading = async (
         facts.status === "parsed" ? facts.slices.map(withoutDependencies) : [],
     })),
     edges,
-    findings: deriveFindings(edges, roots, images),
+    findings: deriveFindings(edges, rootSlices),
     coverage: {
       status:
         unparsed.length === 0 &&
